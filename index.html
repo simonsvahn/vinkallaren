@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#682a36">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Vinkällaren</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#app">Hoppa till innehållet</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#valj" data-view-link="valj" aria-label="Vinkällaren, gå till Välj kväll">
+        <span class="brand-mark" aria-hidden="true">V</span>
+        <span>
+          <strong>Vinkällaren</strong>
+          <small>Privat vinbar</small>
+        </span>
+      </a>
+      <nav class="desktop-nav" data-nav aria-label="Huvudmeny">
+        <a href="#valj" data-view-link="valj">Välj kväll</a>
+        <a href="#oppna" data-view-link="oppna">Öppna nu</a>
+        <a href="#kallaren" data-view-link="kallaren">Källaren</a>
+        <a href="#installningar" data-view-link="installningar">Inställningar</a>
+      </nav>
+      <button class="sync-chip" type="button" data-sync-action aria-label="Synkstatus och Dropbox-inställningar">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span data-connection-label>Lokalt sparat</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="app" class="app" tabindex="-1"></main>
+
+  <nav class="bottom-nav" data-nav aria-label="Mobilmeny">
+    <a href="#valj" data-view-link="valj"><span aria-hidden="true">◇</span>Välj</a>
+    <a href="#oppna" data-view-link="oppna"><span aria-hidden="true">◷</span>Nu</a>
+    <a href="#kallaren" data-view-link="kallaren"><span aria-hidden="true">≡</span>Källaren</a>
+    <a href="#installningar" data-view-link="installningar"><span aria-hidden="true">•••</span>Mer</a>
+  </nav>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript>Vinkällaren behöver JavaScript för att fungera.</noscript>
+  <script type="module" src="./src/app.js?v=20260715-4"></script>
+</body>
+</html>
