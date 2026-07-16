@@ -89,10 +89,18 @@ export function recommendationReason(wine, state, index) {
   return `${first} ${second} ${ending}`;
 }
 
+// Etikettext per urgency-nivå. 0 betyder "ingen redaktionell märkning" och visas
+// aldrig som badge (renderReady() faller då tillbaka på wine.window).
+export const URGENCY_LABELS = { 0: '', 1: 'Ingen brådska', 2: 'Bra fönster', 3: 'Drick nu' };
+
 export function readyNow(wines, limit = 10) {
   return wines
-    .filter(wine => Number(wine.quantity ?? 1) > 0 && ['now', 'air'].includes(wine.ready))
+    // Kurering vinner över härledning: en flaska Simon märkt urgency >= 2 hör hemma
+    // här även om ready-fältet (härlett/importerat) säger t.ex. "cellar".
+    .filter(wine => Number(wine.quantity ?? 1) > 0 && (['now', 'air'].includes(wine.ready) || Number(wine.urgency || 0) >= 2))
     .sort((a, b) => {
+      const urgencyOrder = Number(b.urgency || 0) - Number(a.urgency || 0);
+      if (urgencyOrder) return urgencyOrder;
       const readyOrder = (a.ready === 'now' ? 1 : 0) - (b.ready === 'now' ? 1 : 0);
       return -readyOrder || Number(b.priority || 0) - Number(a.priority || 0) || String(a.vintage).localeCompare(String(b.vintage));
     })

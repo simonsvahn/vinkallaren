@@ -146,7 +146,11 @@ export function normalizeWine(wine, position = 0) {
     air: requiredText(wine.air, 'Bedöm vid öppning.'),
     description: requiredText(wine.description || wine.desc),
     foods: [...new Set(Array.isArray(wine.foods) ? wine.foods.map(String) : [])],
-    moods: [...new Set(Array.isArray(wine.moods) ? wine.moods.map(String) : [])]
+    moods: [...new Set(Array.isArray(wine.moods) ? wine.moods.map(String) : [])],
+    // Redaktionell kuratering av "Öppna nu": fri text plus en brådske-nivå (0–3)
+    // som vinner över det härledda ready-fältet i scoring.js:readyNow().
+    nowNote: requiredText(wine.nowNote),
+    urgency: Math.max(0, Math.min(3, Math.round(Number(wine.urgency)) || 0))
   };
 }
 

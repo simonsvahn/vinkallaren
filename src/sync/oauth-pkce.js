@@ -28,6 +28,8 @@ export function buildDropboxAuthorizationUrl({ clientId, redirectUri, challenge,
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
+  // offline => token-svaret innehåller en refresh_token, så anslutningen överlever omladdning.
+  url.searchParams.set('token_access_type', 'offline');
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('code_challenge', challenge);
   url.searchParams.set('state', state);
@@ -51,5 +53,28 @@ export async function exchangeDropboxCode({ clientId, redirectUri, code, verifie
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.access_token) throw new Error(payload.error_description || payload.error || `Dropbox OAuth misslyckades (${response.status})`);
+  return payload;
+}
+
+// Förnyar en access-token via en lagrad refresh-token. PKCE-publik klient:
+// ingen client_secret skickas eller lagras någonstans.
+export async function refreshDropboxAccessToken({ clientId, refreshToken, fetchImpl = (...args) => globalThis.fetch(...args) }) {
+  if (!fetchImpl) throw new Error('fetch saknas');
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: clientId
+  });
+  const response = await fetchImpl.call(globalThis, 'https://api.dropboxapi.com/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    const error = new Error(payload.error_description || payload.error || 'Kunde inte förnya Dropbox-anslutningen');
+    if (payload.error === 'invalid_grant') error.code = 'invalid_grant';
+    throw error;
+  }
   return payload;
 }

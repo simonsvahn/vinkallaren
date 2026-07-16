@@ -275,6 +275,14 @@ select:focus, input:focus, textarea:focus, button:focus-visible, a:focus-visible
 .now-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .status { border: 1px solid var(--line); padding: 6px 7px; font-size: 8px; letter-spacing: 0.11em; text-transform: uppercase; white-space: nowrap; }
 .status.urgent { border-color: var(--wine); background: var(--wine); color: white; }
+.now-actions { display: flex; align-items: center; gap: 8px; }
+.icon-button { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.4); color: var(--ink); padding: 0; cursor: pointer; font-size: 13px; line-height: 1; }
+.icon-button:hover { border-color: var(--wine); color: var(--wine); }
+.now-item-editing { background: rgba(255, 255, 255, 0.4); }
+.now-edit-fields { display: grid; gap: 10px; }
+.now-edit-fields .field { margin: 0; }
+.now-edit-fields textarea { min-height: 70px; }
+.now-edit-fields .panel-actions { margin-top: 4px; }
 
 .toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 16px; align-items: end; margin-bottom: 26px; }
 .menu-columns { column-count: 2; column-gap: 44px; }
@@ -351,7 +359,7 @@ select:focus, input:focus, textarea:focus, button:focus-visible, a:focus-visible
   .toolbar { grid-template-columns: 1fr; }
   .menu-columns { column-count: 1; }
   .now-item { grid-template-columns: 52px 1fr; }
-  .now-item .status { grid-column: 2; justify-self: start; }
+  .now-item .now-actions { grid-column: 2; justify-self: start; margin-top: 6px; }
   .bottom-nav {
     position: fixed;
     inset: auto 0 0;
