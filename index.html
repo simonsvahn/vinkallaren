@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#682a36">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>Vinkällaren</title>
+  <meta name="description" content="Matcha en hel meny mot flaskorna i din privata vinkällare.">
+  <title>Vinkällaren — meny till flaska</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-180.png">
@@ -17,15 +18,16 @@
 
   <header class="site-header">
     <div class="header-inner">
-      <a class="brand" href="#valj" data-view-link="valj" aria-label="Vinkällaren, gå till Välj kväll">
+      <a class="brand" href="#meny" data-view-link="meny" aria-label="Vinkällaren, gå till menyverktyget">
         <span class="brand-mark" aria-hidden="true">V</span>
         <span>
           <strong>Vinkällaren</strong>
-          <small>Privat vinbar</small>
+          <small>Meny till flaska</small>
         </span>
       </a>
       <nav class="desktop-nav" data-nav aria-label="Huvudmeny">
-        <a href="#valj" data-view-link="valj">Välj kväll</a>
+        <a href="#meny" data-view-link="meny">Meny</a>
+        <a href="#valj" data-view-link="valj">Kväll</a>
         <a href="#oppna" data-view-link="oppna">Öppna nu</a>
         <a href="#kallaren" data-view-link="kallaren">Källaren</a>
         <a href="#installningar" data-view-link="installningar">Inställningar</a>
@@ -40,7 +42,8 @@
   <main id="app" class="app" tabindex="-1"></main>
 
   <nav class="bottom-nav" data-nav aria-label="Mobilmeny">
-    <a href="#valj" data-view-link="valj"><span aria-hidden="true">◇</span>Välj</a>
+    <a href="#meny" data-view-link="meny"><span aria-hidden="true">≋</span>Meny</a>
+    <a href="#valj" data-view-link="valj"><span aria-hidden="true">◇</span>Kväll</a>
     <a href="#oppna" data-view-link="oppna"><span aria-hidden="true">◷</span>Nu</a>
     <a href="#kallaren" data-view-link="kallaren"><span aria-hidden="true">≡</span>Källaren</a>
     <a href="#installningar" data-view-link="installningar"><span aria-hidden="true">•••</span>Mer</a>
@@ -48,6 +51,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <noscript>Vinkällaren behöver JavaScript för att fungera.</noscript>
-  <script type="module" src="./src/app.js?v=20260716-3"></script>
+  <script type="module" src="./src/app.js?v=20260731-1"></script>
 </body>
 </html>

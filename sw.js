@@ -1,7 +1,7 @@
 /* Vinkällaren: cacha endast det datafria appskalet.
    Privat masterdata, Dropbox-svar och synkoperationer får aldrig cachas här. */
 const CACHE_PREFIX = 'vinkallaren-shell-';
-const CACHE = `${CACHE_PREFIX}2026-07-16-3`;
+const CACHE = `${CACHE_PREFIX}2026-07-31-1`;
 const SHELL = [
   './',
   './index.html',
@@ -11,11 +11,11 @@ const SHELL = [
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
-  './src/app.js?v=20260716-3',
+  './src/app.js?v=20260731-1',
   './src/scoring.js',
   './src/importers.js',
   './src/data-layer.js',
-  './src/dropbox-live.js?v=20260716-3',
+  './src/dropbox-live.js?v=20260731-1',
   './src/settings-store.js',
   './src/sommelier.js',
   './src/ct-live.js',

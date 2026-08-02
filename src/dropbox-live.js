@@ -175,7 +175,7 @@ export async function completeDropboxLive({
     access_token: token.access_token,
     expires_at: Number.isFinite(token.expires_in) ? Date.now() + token.expires_in * 1000 : null
   }, localStorage);
-  history.replaceState(null, '', `${redirectUri}#valj`);
+  history.replaceState(null, '', `${redirectUri}#meny`);
   return result;
 }
 

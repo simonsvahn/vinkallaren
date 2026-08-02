@@ -8,7 +8,7 @@ import {
   openLiveRepository,
   syncActiveDropboxSession,
   waitAndSyncDropbox
-} from './dropbox-live.js?v=20260716-3';
+} from './dropbox-live.js?v=20260731-1';
 import { fetchCellarCsv } from './ct-live.js';
 import { mergeCellarImport } from './ct-merge.js';
 import { cellarTrackerCsvToMaster, createMaster, validateMaster } from './importers.js';
@@ -23,12 +23,24 @@ import {
   uniqueLocations
 } from './scoring.js';
 import { appendUsage, clearSecret, loadDeviceSettings, saveDeviceSettings, usageSummary } from './settings-store.js';
-import { SOMMELIER_MODELS, askSommelier } from './sommelier.js';
+import {
+  MAX_MENU_DISHES,
+  SOMMELIER_MODELS,
+  askMenuSommelier,
+  askSommelier,
+  parseMenuText
+} from './sommelier.js';
 
 const app = document.getElementById('app');
 const toast = document.getElementById('toast');
 const SELECTION_KEY = 'vinkallaren:selection';
-const VALID_VIEWS = new Set(['valj', 'oppna', 'kallaren', 'installningar']);
+const MENU_DRAFT_KEY = 'vinkallaren:menu-draft-v2';
+const MENU_OCCASIONS = Object.freeze({
+  vardag: 'Vardag — välj klokt ur källaren',
+  middag: 'Middag — bra flaskor får öppnas',
+  fest: 'Fest — bästa matchningen går först'
+});
+const VALID_VIEWS = new Set(['meny', 'valj', 'oppna', 'kallaren', 'installningar']);
 
 let repository;
 let wines = [];
@@ -36,6 +48,8 @@ let syncState = 'local';
 let syncLabel = 'Lokalt sparat';
 let cellarFilter = { category: 'Alla', search: '' };
 let selection = loadSelection();
+let menuDraft = loadMenuDraft();
+let menuAiState = { status: 'idle', result: null, error: '' };
 let aiState = { status: 'idle', foodText: '', result: null, error: '' };
 let ctState = { status: 'idle' };
 let editingNowId = null;
@@ -52,6 +66,16 @@ function loadSelection() {
 
 function saveSelection() {
   localStorage.setItem(SELECTION_KEY, JSON.stringify(selection));
+}
+
+function loadMenuDraft() {
+  const fallback = { menuText: '', occasion: 'middag', location: 'Alla' };
+  try { return { ...fallback, ...JSON.parse(localStorage.getItem(MENU_DRAFT_KEY) || '{}') }; }
+  catch (_) { return fallback; }
+}
+
+function saveMenuDraft() {
+  localStorage.setItem(MENU_DRAFT_KEY, JSON.stringify(menuDraft));
 }
 
 function escapeHtml(value) {
@@ -72,7 +96,7 @@ function showToast(message) {
 
 function currentView() {
   const value = location.hash.replace(/^#/, '').split('?')[0];
-  return VALID_VIEWS.has(value) ? value : 'valj';
+  return VALID_VIEWS.has(value) ? value : 'meny';
 }
 
 function setSyncStatus(state, label) {
@@ -328,6 +352,237 @@ async function submitAiForm(form) {
     aiState = { status: 'error', foodText, result: null, error: error.message || 'Sommelieren kunde inte svara just nu.' };
   }
   render();
+}
+
+function menuWineOption({ wine, motivation, servingAdvice }, index) {
+  const locationLabel = wine.location || 'Plats ej registrerad';
+  const binLabel = wine.bin || 'Ej angivet';
+  const bottleFacts = [
+    wine.region,
+    wine.window,
+    `${wine.quantity || 1} fl`,
+    `${wine.size || '750'} ml`
+  ].filter(Boolean).join(' · ');
+  return `<article class="menu-wine-option">
+    <div class="menu-option-rank" aria-label="Alternativ ${index + 1}">${index + 1}</div>
+    <div class="menu-option-main">
+      <div class="menu-option-meta">${escapeHtml(wine.vintage)} · ${escapeHtml(wine.category)}</div>
+      <h3>${escapeHtml(wine.producer)}</h3>
+      <div class="menu-option-cuvee">${escapeHtml(wine.cuvee)}</div>
+      <div class="menu-option-facts">${escapeHtml(bottleFacts)}</div>
+      <p class="menu-option-why">${escapeHtml(motivation)}</p>
+      <div class="menu-serving"><span>Servera</span><strong>${escapeHtml(servingAdvice)}</strong></div>
+    </div>
+    <div class="menu-place" aria-label="Flaskans plats i källaren">
+      <span>Hämta flaskan</span>
+      <strong>${escapeHtml(locationLabel)}</strong>
+      <b>${wine.bin ? `Fack ${escapeHtml(binLabel)}` : escapeHtml(binLabel)}</b>
+    </div>
+  </article>`;
+}
+
+function menuCourseMarkup(course, index) {
+  const options = course.recommendations.length
+    ? `<div class="menu-options">${course.recommendations.map(menuWineOption).join('')}</div>`
+    : '<div class="notice">Inga verifierade flaskförslag kom tillbaka för den här rätten. Kör menyn igen eller formulera raden lite mer precist.</div>';
+  return `<section class="menu-course">
+    <header class="menu-course-heading">
+      <div class="menu-course-number">${String(index + 1).padStart(2, '0')}</div>
+      <div><span>Rätt ${index + 1}</span><h2>${escapeHtml(course.text)}</h2></div>
+      <div class="menu-course-count">${course.recommendations.length} förslag</div>
+    </header>
+    ${options}
+  </section>`;
+}
+
+function menuResultMarkup() {
+  if (menuAiState.status === 'loading') {
+    return `<section class="menu-loading" aria-live="polite">
+      <div class="menu-loading-mark" aria-hidden="true">V</div>
+      <div><strong>Sommelieren läser hela menyn</strong><span>Varje rätt jämförs med flaskorna på vald plats. Det kan ta 10–60 sekunder.</span></div>
+    </section>`;
+  }
+  if (menuAiState.status === 'error') {
+    return `<div class="notice menu-error">${escapeHtml(menuAiState.error)}</div>`;
+  }
+  if (menuAiState.status !== 'done' || !menuAiState.result) return '';
+
+  const { courses, generalNote, dropped, missingCourses } = menuAiState.result;
+  const verifiedCount = courses.reduce((sum, course) => sum + course.recommendations.length, 0);
+  return `<section class="menu-results" id="menu-results">
+    <header class="menu-results-heading">
+      <div>
+        <p class="eyebrow">Verifierat mot källaren</p>
+        <h2>${courses.length} rätter · ${verifiedCount} flaskförslag</h2>
+      </div>
+      <div class="menu-result-actions">
+        <button class="secondary" type="button" data-menu-copy>Kopiera förslagen</button>
+        <button class="secondary" type="button" data-print>Skriv ut</button>
+      </div>
+    </header>
+    ${generalNote ? `<div class="menu-general-note"><span>Om menyn som helhet</span>${escapeHtml(generalNote)}</div>` : ''}
+    ${courses.map(menuCourseMarkup).join('')}
+    ${dropped > 0 ? `<div class="notice">${dropped} ogiltiga eller dubbla AI-förslag sorterades bort eftersom de inte kunde verifieras mot källaren.</div>` : ''}
+    ${missingCourses > 0 ? `<div class="notice">${missingCourses} ${missingCourses === 1 ? 'rätt saknar' : 'rätter saknar'} verifierade förslag.</div>` : ''}
+  </section>`;
+}
+
+function renderMenu() {
+  const settings = loadDeviceSettings();
+  const locations = uniqueLocations(wines);
+  if (!locations.includes(menuDraft.location)) menuDraft.location = 'Alla';
+  const availableWines = winesForLocation(menuDraft.location);
+  const dishCount = String(menuDraft.menuText || '').split(/\r?\n/).filter(line => line.trim()).length;
+  const loading = menuAiState.status === 'loading';
+  const apiReady = Boolean(settings.anthropicApiKey);
+
+  return `<div class="view menu-view">
+    <section class="menu-hero">
+      <div>
+        <p class="eyebrow">Vinkällaren V2 · Menyverktyget</p>
+        <h1>En hel meny.<em>Flera svar per rätt.</em></h1>
+        <p>Klistra in rätterna precis som du har skrivit dem. Appen läser hela menyn på en gång och visar bara flaskor som faktiskt finns i din källare.</p>
+      </div>
+      <aside class="menu-proof">
+        <div><strong>${availableWines.length}</strong><span>viner på vald plats</span></div>
+        <div><strong>2–3</strong><span>förslag per rätt</span></div>
+        <p>Plats och fack hämtas från din lokala inventariedata efter AI-svaret. De kan därför inte hittas på av sommelieren.</p>
+      </aside>
+    </section>
+
+    <section class="menu-workbench">
+      <form id="menu-form">
+        <div class="menu-form-heading">
+          <div><span>01</span><h2>Skriv menyn</h2></div>
+          <p>En rätt per rad. Tomma rader ignoreras. Högst ${MAX_MENU_DISHES} rätter i samma körning.</p>
+        </div>
+        <div class="menu-form-grid">
+          <div class="field menu-input-field">
+            <label for="menu-input">Kvällens rätter</label>
+            <textarea id="menu-input" name="menuText" rows="9" placeholder="Toast Skagen med löjrom&#10;Smörstekt hälleflundra med sandefjordsås&#10;Hjortfilé, rotselleri och svartvinbär&#10;Comté 24 månader">${escapeHtml(menuDraft.menuText)}</textarea>
+            <div class="menu-input-meta"><span data-menu-count>${dishCount} ${dishCount === 1 ? 'rätt' : 'rätter'}</span><span>Radbrytning = ny rätt</span></div>
+          </div>
+          <aside class="menu-controls">
+            <div class="field">
+              <label for="menu-occasion">Tillfälle</label>
+              <select id="menu-occasion" name="occasion">${selectorOptions(MENU_OCCASIONS, menuDraft.occasion)}</select>
+            </div>
+            <div class="field">
+              <label for="menu-location">Källarplats</label>
+              <select id="menu-location" name="location">
+                <option value="Alla">Alla platser</option>
+                ${locations.map(location => `<option value="${escapeHtml(location)}" ${menuDraft.location === location ? 'selected' : ''}>${escapeHtml(location)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="menu-inventory-note">
+              <span>Urval</span>
+              <strong>${availableWines.length} viner med saldo</strong>
+              <small>Varje rekommendation kontrolleras mot aktuellt id, antal, location och bin.</small>
+            </div>
+            ${apiReady ? '' : '<div class="notice">Lägg först in din Anthropic API-nyckel under Inställningar.</div>'}
+            <div class="menu-form-actions">
+              ${apiReady
+                ? `<button class="primary menu-submit" type="submit" ${loading ? 'disabled' : ''}>${loading ? 'Analyserar hela menyn…' : 'Matcha hela menyn'}</button>`
+                : '<a class="primary menu-submit" href="#installningar">Öppna inställningar</a>'}
+              <button class="text-action" type="button" data-menu-clear>Rensa menyn</button>
+            </div>
+          </aside>
+        </div>
+      </form>
+    </section>
+
+    ${menuResultMarkup()}
+  </div>`;
+}
+
+async function submitMenuForm(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+  menuDraft = {
+    menuText: String(data.menuText || ''),
+    occasion: String(data.occasion || 'middag'),
+    location: String(data.location || 'Alla')
+  };
+  saveMenuDraft();
+
+  let dishes;
+  try {
+    dishes = parseMenuText(menuDraft.menuText);
+  } catch (error) {
+    menuAiState = { status: 'error', result: null, error: error.message };
+    render();
+    return;
+  }
+  if (!dishes.length) {
+    menuAiState = { status: 'error', result: null, error: 'Skriv minst en rätt — en rätt per rad.' };
+    render();
+    return;
+  }
+
+  const settings = loadDeviceSettings();
+  if (!settings.anthropicApiKey) {
+    location.hash = '#installningar';
+    showToast('Lägg in API-nyckeln först');
+    return;
+  }
+
+  const availableWines = winesForLocation(menuDraft.location);
+  if (availableWines.length < 2) {
+    menuAiState = { status: 'error', result: null, error: 'Den valda platsen behöver minst två tillgängliga viner för att kunna ge flera förslag.' };
+    render();
+    return;
+  }
+
+  menuAiState = { status: 'loading', result: null, error: '' };
+  render();
+  try {
+    const locationLabel = menuDraft.location === 'Alla' ? 'Alla platser' : menuDraft.location;
+    const response = await askMenuSommelier({
+      apiKey: settings.anthropicApiKey,
+      model: settings.anthropicModel,
+      dishes,
+      occasion: MENU_OCCASIONS[menuDraft.occasion] || MENU_OCCASIONS.middag,
+      locationLabel,
+      wines: availableWines
+    });
+    menuAiState = { status: 'done', result: response, error: '' };
+    appendUsage({
+      at: new Date().toISOString(),
+      model: response.model,
+      inputTokens: response.usage?.input_tokens || 0,
+      outputTokens: response.usage?.output_tokens || 0,
+      cacheCreation: response.usage?.cache_creation_input_tokens || 0,
+      cacheRead: response.usage?.cache_read_input_tokens || 0
+    });
+  } catch (error) {
+    menuAiState = { status: 'error', result: null, error: error.message || 'Menyn kunde inte analyseras just nu.' };
+  }
+  render();
+  if (menuAiState.status === 'done') {
+    requestAnimationFrame(() => document.getElementById('menu-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+}
+
+async function copyMenuResults() {
+  if (!menuAiState.result) return;
+  const lines = ['VINKÄLLARENS MENYFÖRSLAG'];
+  for (const [courseIndex, course] of menuAiState.result.courses.entries()) {
+    lines.push('', `${courseIndex + 1}. ${course.text}`);
+    course.recommendations.forEach(({ wine, motivation, servingAdvice }, wineIndex) => {
+      lines.push(
+        `${wineIndex + 1}) ${wine.vintage} ${wine.producer} — ${wine.cuvee}`,
+        `   Plats: ${wine.location || 'ej registrerad'}${wine.bin ? `, fack ${wine.bin}` : ''}`,
+        `   Varför: ${motivation}`,
+        `   Servera: ${servingAdvice}`
+      );
+    });
+  }
+  if (menuAiState.result.generalNote) lines.push('', `Om menyn: ${menuAiState.result.generalNote}`);
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    showToast('Förslagen kopierade');
+  } catch (_) {
+    showToast('Kunde inte kopiera på den här enheten');
+  }
 }
 
 function renderChoose() {
@@ -592,6 +847,7 @@ function render() {
   updateNavigation(view);
   if (view !== 'oppna') editingNowId = null;
   if (!wines.length && view !== 'installningar') app.innerHTML = renderEmpty();
+  else if (view === 'meny') app.innerHTML = renderMenu();
   else if (view === 'valj') app.innerHTML = renderChoose();
   else if (view === 'oppna') app.innerHTML = renderReady();
   else if (view === 'kallaren') app.innerHTML = renderCellar();
@@ -636,6 +892,18 @@ function exportData() {
 }
 
 app.addEventListener('click', async event => {
+  if (event.target.closest('[data-menu-clear]')) {
+    menuDraft = { ...menuDraft, menuText: '' };
+    menuAiState = { status: 'idle', result: null, error: '' };
+    saveMenuDraft();
+    render();
+    document.getElementById('menu-input')?.focus();
+    return;
+  }
+  if (event.target.closest('[data-menu-copy]')) {
+    await copyMenuResults();
+    return;
+  }
   const preset = event.target.closest('[data-preset]');
   if (preset) return applyPreset(preset.dataset.preset);
   const category = event.target.closest('[data-category]');
@@ -679,6 +947,11 @@ app.addEventListener('click', async event => {
 });
 
 app.addEventListener('submit', async event => {
+  if (event.target.id === 'menu-form') {
+    event.preventDefault();
+    await submitMenuForm(event.target);
+    return;
+  }
   if (event.target.id === 'selector-form') {
     event.preventDefault();
     selection = { ...selection, ...Object.fromEntries(new FormData(event.target).entries()) };
@@ -723,6 +996,18 @@ app.addEventListener('submit', async event => {
 });
 
 app.addEventListener('input', event => {
+  if (event.target.id === 'menu-input') {
+    menuDraft.menuText = event.target.value;
+    saveMenuDraft();
+    if (menuAiState.status === 'done' || menuAiState.status === 'error') {
+      menuAiState = { status: 'idle', result: null, error: '' };
+      document.querySelector('.menu-results, .menu-error')?.remove();
+    }
+    const dishCount = event.target.value.split(/\r?\n/).filter(line => line.trim()).length;
+    const counter = document.querySelector('[data-menu-count]');
+    if (counter) counter.textContent = `${dishCount} ${dishCount === 1 ? 'rätt' : 'rätter'}`;
+    return;
+  }
   if (event.target.id === 'cellar-search') {
     cellarFilter.search = event.target.value;
     const caret = event.target.selectionStart;
@@ -734,6 +1019,20 @@ app.addEventListener('input', event => {
 });
 
 app.addEventListener('change', event => {
+  if (event.target.id === 'menu-occasion') {
+    menuDraft.occasion = event.target.value;
+    menuAiState = { status: 'idle', result: null, error: '' };
+    saveMenuDraft();
+    render();
+    return;
+  }
+  if (event.target.id === 'menu-location') {
+    menuDraft.location = event.target.value;
+    menuAiState = { status: 'idle', result: null, error: '' };
+    saveMenuDraft();
+    render();
+    return;
+  }
   if (['data-file', 'data-file-empty'].includes(event.target.id)) handleFile(event.target.files?.[0]);
 });
 
@@ -774,7 +1073,7 @@ async function boot() {
       setSyncStatus('local', dropboxConfigured() ? 'Dropbox ej ansluten' : 'Lokalt sparat');
     }
     await loadPrivateSeedIfAvailable();
-    if (!location.hash) history.replaceState(null, '', `${location.pathname}${location.search}#valj`);
+    if (!location.hash) history.replaceState(null, '', `${location.pathname}${location.search}#meny`);
     render();
     if (hasActiveDropboxSession()) {
       // Efter en färsk OAuth-anslutning har completeDropboxLive redan synkat en gång —
@@ -783,7 +1082,7 @@ async function boot() {
       runLiveSyncLoop();
     }
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-      navigator.serviceWorker.register('./sw.js?v=20260716-3').catch(() => {});
+      navigator.serviceWorker.register('./sw.js?v=20260731-1').catch(() => {});
     }
     const deviceSettings = loadDeviceSettings();
     const ctReady = Boolean(deviceSettings.ctWorkerUrl && deviceSettings.ctUser && deviceSettings.ctPassword);
